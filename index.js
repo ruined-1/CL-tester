@@ -296,13 +296,13 @@ client.on("interactionCreate", async interaction => {
 
 async function startBot() {
     try {
-        await registerCommands();
-
         console.log("🔑 Logging into Discord...");
 
         await client.login(TOKEN);
+
+        console.log("✅ Discord login successful.");
     } catch (error) {
-        console.error("❌ Failed to start Discord bot:", error);
+        console.error("❌ Failed to login to Discord:", error);
         process.exit(1);
     }
 }
