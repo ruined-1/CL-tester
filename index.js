@@ -344,65 +344,12 @@ client.on("interactionCreate", async interaction => {
 
 async function startBot() {
     try {
-        console.log("");
-        console.log("🔎 Testing Discord API connection...");
-
-        const controller = new AbortController();
-
-        const timeout = setTimeout(() => {
-            controller.abort();
-        }, 10000);
-
-        const response = await fetch(
-            "https://discord.com/api/v10/gateway/bot",
-            {
-                headers: {
-                    Authorization: `Bot ${TOKEN}`,
-                    "User-Agent": "CL-Quality-Control-Bot/1.0"
-                },
-                signal: controller.signal
-            }
-        );
-
-        clearTimeout(timeout);
-
-        console.log(`📡 Discord API status: ${response.status}`);
-        console.log(`📡 Discord API content-type: ${response.headers.get("content-type")}`);
-
-        const body = await response.text();
-
-        console.log("");
-        console.log("📄 Discord API response:");
-        console.log(body.substring(0, 1000));
-        console.log("");
-
-        if (!response.ok) {
-            console.error("❌ Discord API request failed.");
-            process.exit(1);
-        }
-
-        let data;
-
-        try {
-            data = JSON.parse(body);
-        } catch (error) {
-            console.error("❌ Discord returned non-JSON data.");
-            console.error("This means the request is not reaching the normal Discord API response.");
-            process.exit(1);
-        }
-
-        console.log("✅ Discord API is reachable.");
-        console.log(`🌐 Gateway URL: ${data.url}`);
-        console.log(`🔢 Recommended shards: ${data.shards}`);
-
-        console.log("");
-        console.log("🔑 Now connecting to Discord Gateway...");
-        console.log("");
+        console.log("🔑 Logging into Discord Gateway...");
 
         const loginTimeout = setTimeout(() => {
             console.error("");
             console.error("❌ Discord Gateway connection timed out.");
-            console.error("The HTTP API responded, but the Gateway connection did not complete.");
+            console.error("Render could start the application, but Discord Gateway did not complete the connection.");
             console.error("");
             process.exit(1);
         }, 30000);
@@ -411,15 +358,11 @@ async function startBot() {
 
         clearTimeout(loginTimeout);
 
-        console.log("");
-        console.log("✅ client.login() completed.");
-        console.log("");
+        console.log("✅ Discord login completed.");
 
     } catch (error) {
-        console.error("");
-        console.error("❌ Discord connection failed:");
+        console.error("❌ Discord login failed:");
         console.error(error);
-        console.error("");
         process.exit(1);
     }
 }
