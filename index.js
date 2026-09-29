@@ -103,26 +103,25 @@ const client = new Client({
 // DISCORD CONNECTION EVENTS
 // =====================================================
 
-client.once("ready", () => {
+client.once("ready", async () => {
     console.log(`✅ Discord connected as ${client.user.tag}`);
     console.log(`🤖 Bot ID: ${client.user.id}`);
     console.log(`🌐 Serving ${client.guilds.cache.size} server(s)`);
-});
 
-client.on("error", (error) => {
-    console.error("❌ Discord client error:", error);
-});
+    try {
+        console.log("🔄 Registering slash commands...");
 
-client.on("shardError", (error) => {
-    console.error("❌ Discord Gateway error:", error);
-});
+        await rest.put(
+            Routes.applicationCommands(CLIENT_ID),
+            {
+                body: commands
+            }
+        );
 
-client.on("shardDisconnect", (event) => {
-    console.log("⚠️ Discord disconnected:", event);
-});
-
-client.on("shardReconnecting", () => {
-    console.log("🔄 Discord reconnecting...");
+        console.log("✅ Commands registered successfully.");
+    } catch (error) {
+        console.error("❌ Failed to register commands:", error);
+    }
 });
 
 // =====================================================
