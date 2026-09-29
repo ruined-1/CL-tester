@@ -13,6 +13,26 @@ app.listen(PORT, () => {
     console.log(`Web server running on port ${PORT}`);
 });
 
+client.once("ready", () => {
+    console.log(`✅ Discord connected as ${client.user.tag}`);
+});
+
+client.on("error", (error) => {
+    console.error("❌ Discord client error:", error);
+});
+
+client.on("shardError", (error) => {
+    console.error("❌ Discord Gateway error:", error);
+});
+
+client.on("shardDisconnect", (event) => {
+    console.log("⚠️ Discord disconnected:", event);
+});
+
+client.on("shardReconnecting", () => {
+    console.log("🔄 Discord reconnecting...");
+});
+
 const {
     Client,
     GatewayIntentBits,
