@@ -349,10 +349,58 @@ client.on("interactionCreate", async interaction => {
 async function startBot() {
     try {
         console.log("");
-        console.log("🔑 Logging into Discord...");
+        console.log("🔎 Testing Discord API connection...");
+        
+        const controller = new AbortController();
+
+        const timeout = setTimeout(() => {
+            controller.abort();
+        }, 10000);
+
+        const response = await fetch(
+            "https://discord.com/api/v10/gateway/bot",
+            {
+                headers: {
+                    Authorization: `Bot ${TOKEN}`
+                },
+                signal: controller.signal
+            }
+        );
+
+        clearTimeout(timeout);
+
+        console.log(`📡 Discord API status: ${response.status}`);
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            console.error("❌ Discord API rejected the bot token:");
+            console.error(data);
+            process.exit(1);
+        }
+
+        console.log("✅ Discord API is reachable.");
+        console.log(`🌐 Gateway URL: ${data.url}`);
+        console.log(`🔢 Recommended shards: ${data.shards}`);
+
+        console.log("");
+        console.log("🔑 Now connecting Discord Gateway...");
         console.log("");
 
+        // Don't let a Gateway connection hang forever
+        const loginTimeout = setTimeout(() => {
+            console.error("");
+            console.error("❌ Discord Gateway connection timed out.");
+            console.error(
+                "The HTTP connection to Discord works, but the WebSocket connection did not complete."
+            );
+            console.error("");
+            process.exit(1);
+        }, 30000);
+
         await client.login(TOKEN);
+
+        clearTimeout(loginTimeout);
 
         console.log("");
         console.log("✅ client.login() completed.");
@@ -360,7 +408,7 @@ async function startBot() {
 
     } catch (error) {
         console.error("");
-        console.error("❌ Discord login failed:");
+        console.error("❌ Discord connection failed:");
         console.error(error);
         console.error("");
 
