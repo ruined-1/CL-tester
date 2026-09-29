@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node index.js"
   },
   "keywords": [],
   "author": "",
@@ -12,6 +12,6 @@
   "type": "commonjs",
   "dependencies": {
     "discord.js": "^14.27.0",
-    "fs": "^0.0.1-security"
+    "dotenv": "^16.6.1"
   }
 }
