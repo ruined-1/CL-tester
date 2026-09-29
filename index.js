@@ -103,10 +103,6 @@ const client = new Client({
 // DISCORD DEBUG / ERROR EVENTS
 // =====================================================
 
-client.on("debug", info => {
-    console.log(`🔍 Discord debug: ${info}`);
-});
-
 client.on("warn", info => {
     console.warn(`⚠️ Discord warning: ${info}`);
 });
