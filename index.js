@@ -17,8 +17,8 @@ const {
 // =====================================================
 
 const TOKEN = process.env.TOKEN;
-const LOG_CHANNEL_ID = "1536043209157779587";
 const CLIENT_ID = "1536042818664013916";
+const LOG_CHANNEL_ID = "1536043209157779587";
 
 if (!TOKEN) {
     console.error("❌ Missing TOKEN environment variable.");
@@ -26,14 +26,14 @@ if (!TOKEN) {
 }
 
 // =====================================================
-// WEB SERVER - FOR RENDER
+// WEB SERVER - RENDER
 // =====================================================
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.get("/", (req, res) => {
-    res.send("Bot is online.");
+    res.status(200).send("Bot is online.");
 });
 
 app.listen(PORT, "0.0.0.0", () => {
@@ -51,7 +51,10 @@ let db = {
 
 if (fs.existsSync("./db.json")) {
     try {
-        db = JSON.parse(fs.readFileSync("./db.json", "utf8"));
+        db = JSON.parse(
+            fs.readFileSync("./db.json", "utf8")
+        );
+
         console.log("✅ Database loaded.");
     } catch (error) {
         console.error("❌ Failed to load db.json:", error);
@@ -59,7 +62,6 @@ if (fs.existsSync("./db.json")) {
     }
 }
 
-// Save database
 function saveDB() {
     try {
         fs.writeFileSync(
@@ -100,28 +102,36 @@ const client = new Client({
 });
 
 // =====================================================
-// DISCORD CONNECTION EVENTS
+// DISCORD DEBUG / ERROR EVENTS
 // =====================================================
 
-client.once("ready", async () => {
-    console.log(`✅ Discord connected as ${client.user.tag}`);
-    console.log(`🤖 Bot ID: ${client.user.id}`);
-    console.log(`🌐 Serving ${client.guilds.cache.size} server(s)`);
+client.on("debug", info => {
+    console.log(`🔍 Discord debug: ${info}`);
+});
 
-    try {
-        console.log("🔄 Registering slash commands...");
+client.on("warn", info => {
+    console.warn(`⚠️ Discord warning: ${info}`);
+});
 
-        await rest.put(
-            Routes.applicationCommands(CLIENT_ID),
-            {
-                body: commands
-            }
-        );
+client.on("error", error => {
+    console.error("❌ Discord client error:", error);
+});
 
-        console.log("✅ Commands registered successfully.");
-    } catch (error) {
-        console.error("❌ Failed to register commands:", error);
-    }
+client.on("shardError", error => {
+    console.error("❌ Discord Gateway error:", error);
+});
+
+client.on("shardDisconnect", (event, shardId) => {
+    console.error(
+        `⚠️ Shard ${shardId} disconnected:`,
+        event
+    );
+});
+
+client.on("shardReconnecting", shardId => {
+    console.log(
+        `🔄 Shard ${shardId} reconnecting...`
+    );
 });
 
 // =====================================================
@@ -163,14 +173,31 @@ const commands = [
 ].map(command => command.toJSON());
 
 // =====================================================
-// REGISTER SLASH COMMANDS
+// DISCORD REST API
 // =====================================================
 
 const rest = new REST({
     version: "10"
 }).setToken(TOKEN);
 
-async function registerCommands() {
+// =====================================================
+// READY EVENT
+// =====================================================
+
+client.once("ready", async () => {
+    console.log("");
+    console.log("========================================");
+    console.log(
+        `✅ Discord connected as ${client.user.tag}`
+    );
+    console.log(`🤖 Bot ID: ${client.user.id}`);
+    console.log(
+        `🌐 Serving ${client.guilds.cache.size} server(s)`
+    );
+    console.log("========================================");
+    console.log("");
+
+    // Register slash commands AFTER Discord connection
     try {
         console.log("🔄 Registering slash commands...");
 
@@ -181,27 +208,37 @@ async function registerCommands() {
             }
         );
 
-        console.log("✅ Commands registered successfully.");
+        console.log("✅ Slash commands registered successfully.");
     } catch (error) {
-        console.error("❌ Failed to register commands:", error);
+        console.error(
+            "❌ Failed to register slash commands:"
+        );
+
+        console.error(error);
     }
-}
+});
 
 // =====================================================
 // SLASH COMMAND HANDLING
 // =====================================================
 
 client.on("interactionCreate", async interaction => {
-    if (!interaction.isChatInputCommand()) return;
+    if (!interaction.isChatInputCommand()) {
+        return;
+    }
 
     try {
+
         // =================================================
         // STRIKE COMMAND
         // =================================================
 
         if (interaction.commandName === "strike") {
-            const tester = interaction.options.getUser("tester");
-            const reason = interaction.options.getString("reason");
+            const tester =
+                interaction.options.getUser("tester");
+
+            const reason =
+                interaction.options.getString("reason");
 
             if (!db.strikes[tester.id]) {
                 db.strikes[tester.id] = [];
@@ -215,7 +252,8 @@ client.on("interactionCreate", async interaction => {
             saveDB();
 
             await interaction.reply({
-                content: `⚠️ Strike added to **${tester.username}** for: ${reason}`
+                content:
+                    `⚠️ Strike added to **${tester.username}** for: ${reason}`
             });
 
             return;
@@ -226,12 +264,16 @@ client.on("interactionCreate", async interaction => {
         // =================================================
 
         if (interaction.commandName === "report") {
-            const title = interaction.options.getString("title");
+            const title =
+                interaction.options.getString("title");
+
             const description =
                 interaction.options.getString("description");
 
+            // Check for duplicate
             const duplicate = isDuplicate(title);
 
+            // Create bug
             const bug = {
                 id: db.bugs.length + 1,
                 title: title,
@@ -241,6 +283,7 @@ client.on("interactionCreate", async interaction => {
             };
 
             db.bugs.push(bug);
+
             saveDB();
 
             // Create embed
@@ -249,7 +292,8 @@ client.on("interactionCreate", async interaction => {
                 .setDescription(description)
                 .setColor(0x040024)
                 .setFooter({
-                    text: `Reported by ${interaction.user.username}`
+                    text:
+                        `Reported by ${interaction.user.username}`
                 })
                 .setTimestamp();
 
@@ -261,13 +305,17 @@ client.on("interactionCreate", async interaction => {
                 await logChannel.send({
                     embeds: [embed]
                 });
+
+                console.log(
+                    `📋 Bug report logged: ${title}`
+                );
             } else {
                 console.warn(
-                    `⚠️ Could not find log channel ${LOG_CHANNEL_ID}`
+                    `⚠️ Could not find log channel: ${LOG_CHANNEL_ID}`
                 );
             }
 
-            // Reply to reporter
+            // Respond to user
             await interaction.reply({
                 content: duplicate
                     ? `🐛 Bug reported — **duplicate detected** of: "${duplicate.title}"`
@@ -276,13 +324,20 @@ client.on("interactionCreate", async interaction => {
 
             return;
         }
-    } catch (error) {
-        console.error("❌ Error handling interaction:", error);
 
-        // Only respond if we haven't already responded
-        if (!interaction.replied && !interaction.deferred) {
+    } catch (error) {
+        console.error(
+            "❌ Error while handling interaction:",
+            error
+        );
+
+        if (
+            !interaction.replied &&
+            !interaction.deferred
+        ) {
             await interaction.reply({
-                content: "❌ Something went wrong while processing that command.",
+                content:
+                    "❌ Something went wrong while processing that command.",
                 ephemeral: true
             }).catch(() => {});
         }
@@ -290,20 +345,33 @@ client.on("interactionCreate", async interaction => {
 });
 
 // =====================================================
-// START BOT
+// START DISCORD BOT
 // =====================================================
 
 async function startBot() {
     try {
+        console.log("");
         console.log("🔑 Logging into Discord...");
+        console.log("");
 
         await client.login(TOKEN);
 
-        console.log("✅ Discord login successful.");
+        console.log("");
+        console.log("✅ client.login() completed.");
+        console.log("");
+
     } catch (error) {
-        console.error("❌ Failed to login to Discord:", error);
+        console.error("");
+        console.error("❌ Discord login failed:");
+        console.error(error);
+        console.error("");
+
         process.exit(1);
     }
 }
+
+// =====================================================
+// START
+// =====================================================
 
 startBot();
