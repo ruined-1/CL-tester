@@ -357,8 +357,8 @@ client.on(
                             "You received an Infraction."
                         )
                         .setDescription(
-                            `Reason: ${safeReason}\n` +
-                            `Infractions: ${infractionCount}`
+                            `**Reason**: ${safeReason}\n` +
+                            `**Infractions**: ${infractionCount}`
                         )
                         .setColor(
                             INFRACTION_COLOR
@@ -397,9 +397,9 @@ client.on(
                         "Tester Infraction Issued."
                     )
                     .setDescription(
-                        `Infracted User: ${user}\n` +
-                        `Reason: ${safeReason}\n` +
-                        `Infraction Count: ${infractionCount}\n` +
+                        `**Infracted User**: ${user}\n` +
+                        `**Reason**: ${safeReason}\n` +
+                        `**Infraction Count**: ${infractionCount}\n` +
                         `-# ${dmStatus}`
                     )
                     .setColor(
