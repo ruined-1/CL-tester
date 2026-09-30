@@ -12,6 +12,10 @@ const {
     EmbedBuilder
 } = require("discord.js");
 
+const {
+    WebSocketManager: DiscordWSManager
+} = require("@discordjs/ws");
+
 const TOKEN = process.env.TOKEN;
 
 const CLIENT_ID = "1536042818664013916";
@@ -31,13 +35,134 @@ if (!TOKEN) {
 }
 
 /* =========================================================
+   DIRECT @discordjs/ws WORKAROUND
+========================================================= */
+
+/*
+    IMPORTANT:
+
+    discord.js 14.27.0 creates its own wrapper WebSocketManager.
+
+    Internally, that wrapper creates an @discordjs/ws
+    WebSocketManager and then calls:
+
+        this._ws.fetchGatewayInformation()
+
+    Render previously received a Cloudflare 429 response when
+    discord.js tried to obtain /gateway/bot.
+
+    We already confirmed that Render CAN connect directly to:
+
+        wss://gateway.discord.gg/?v=10&encoding=json
+
+    Therefore we patch the actual @discordjs/ws manager
+    BEFORE discord.js creates it.
+
+    This means:
+
+        discord.js Client
+              ↓
+        discord.js WebSocketManager
+              ↓
+        @discordjs/ws WebSocketManager
+              ↓
+        OUR patched fetchGatewayInformation()
+              ↓
+        wss://gateway.discord.gg
+
+    The normal discord.js Client remains intact.
+*/
+
+const originalFetchGatewayInformation =
+    DiscordWSManager.prototype.fetchGatewayInformation;
+
+if (
+    typeof originalFetchGatewayInformation !== "function"
+) {
+    console.error(
+        "❌ @discordjs/ws fetchGatewayInformation() was not found."
+    );
+
+    console.error(
+        "Installed @discordjs/ws version may be incompatible."
+    );
+
+    process.exit(1);
+}
+
+DiscordWSManager.prototype.fetchGatewayInformation =
+    async function patchedFetchGatewayInformation() {
+
+        console.log("");
+        console.log(
+            "=========================================="
+        );
+
+        console.log(
+            "🌐 @discordjs/ws DIRECT GATEWAY WORKAROUND"
+        );
+
+        console.log(
+            "=========================================="
+        );
+
+        console.log("");
+
+        console.log(
+            "🚫 Skipping Discord /gateway/bot HTTP request."
+        );
+
+        console.log(
+            `🔗 Gateway: ${DIRECT_GATEWAY_URL}`
+        );
+
+        console.log("");
+
+        const gatewayInformation = {
+            url: DIRECT_GATEWAY_URL,
+
+            /*
+                This bot is using one shard.
+            */
+            shards: 1,
+
+            /*
+                Values required by @discordjs/ws.
+
+                Since we are bypassing the Gateway Bot HTTP
+                endpoint, these are supplied locally.
+            */
+            session_start_limit: {
+                total: 1000,
+                remaining: 1000,
+                reset_after: 0,
+                max_concurrency: 1
+            }
+        };
+
+        console.log(
+            "✅ Direct Gateway information supplied."
+        );
+
+        console.log("");
+
+        return gatewayInformation;
+    };
+
+console.log(
+    "✅ @discordjs/ws Gateway workaround installed."
+);
+
+/* =========================================================
    EXPRESS WEB SERVER
 ========================================================= */
 
 const app = express();
 
 app.get("/", (req, res) => {
-    res.status(200).send("CL - Quality Control is running.");
+    res.status(200).send(
+        "CL - Quality Control is running."
+    );
 });
 
 app.get("/health", (req, res) => {
@@ -50,7 +175,9 @@ app.get("/health", (req, res) => {
 });
 
 app.listen(PORT, "0.0.0.0", () => {
-    console.log(`🌐 Web server running on port ${PORT}`);
+    console.log(
+        `🌐 Web server running on port ${PORT}`
+    );
 });
 
 /* =========================================================
@@ -65,21 +192,33 @@ let db = {
 };
 
 function loadDatabase() {
+
     try {
+
         if (fs.existsSync(DB_FILE)) {
-            const raw = fs.readFileSync(DB_FILE, "utf8");
+
+            const raw =
+                fs.readFileSync(
+                    DB_FILE,
+                    "utf8"
+                );
 
             if (raw.trim()) {
-                const parsed = JSON.parse(raw);
+
+                const parsed =
+                    JSON.parse(raw);
 
                 db = {
-                    strikes: Array.isArray(parsed.strikes)
-                        ? parsed.strikes
-                        : [],
 
-                    reports: Array.isArray(parsed.reports)
-                        ? parsed.reports
-                        : []
+                    strikes:
+                        Array.isArray(parsed.strikes)
+                            ? parsed.strikes
+                            : [],
+
+                    reports:
+                        Array.isArray(parsed.reports)
+                            ? parsed.reports
+                            : []
                 };
             }
         }
@@ -87,8 +226,13 @@ function loadDatabase() {
         console.log(
             `📁 Database loaded: ${db.strikes.length} strikes, ${db.reports.length} reports`
         );
+
     } catch (error) {
-        console.error("❌ Failed to load db.json:");
+
+        console.error(
+            "❌ Failed to load db.json:"
+        );
+
         console.error(error);
 
         db = {
@@ -99,29 +243,51 @@ function loadDatabase() {
 }
 
 function saveDatabase() {
+
     try {
+
         fs.writeFileSync(
             DB_FILE,
-            JSON.stringify(db, null, 2),
+            JSON.stringify(
+                db,
+                null,
+                2
+            ),
             "utf8"
         );
 
-        console.log("💾 Database saved.");
+        console.log(
+            "💾 Database saved."
+        );
+
     } catch (error) {
-        console.error("❌ Failed to save db.json:");
+
+        console.error(
+            "❌ Failed to save db.json:"
+        );
+
         console.error(error);
     }
 }
 
 function isDuplicateReport(title) {
-    if (!title) return false;
+
+    if (!title) {
+        return false;
+    }
 
     const normalizedTitle =
-        title.trim().toLowerCase();
+        title
+            .trim()
+            .toLowerCase();
 
-    return db.reports.some(report =>
-        typeof report.title === "string" &&
-        report.title.trim().toLowerCase() === normalizedTitle
+    return db.reports.some(
+        report =>
+            typeof report.title === "string" &&
+            report.title
+                .trim()
+                .toLowerCase() ===
+                normalizedTitle
     );
 }
 
@@ -132,300 +298,245 @@ loadDatabase();
 ========================================================= */
 
 const client = new Client({
+
     intents: [
         GatewayIntentBits.Guilds
-    ]
+    ],
+
+    /*
+        One shard is enough for this bot.
+    */
+
+    ws: {
+        version: "10"
+    }
 });
-
-/* =========================================================
-   DIRECT @discordjs/ws GATEWAY WORKAROUND
-========================================================= */
-
-/*
-    discord.js 14.27.0 uses @discordjs/ws internally.
-
-    Normally, the WebSocket manager obtains Gateway information
-    through Discord's /gateway/bot endpoint.
-
-    In our Render environment, that HTTP endpoint previously
-    returned a Cloudflare 429 HTML response.
-
-    We already verified that this WebSocket works directly:
-
-        wss://gateway.discord.gg/?v=10&encoding=json
-
-    Therefore we replace the WebSocket manager's
-    fetchGatewayInformation() method before login.
-
-    This keeps the normal discord.js Client intact while
-    changing only the Gateway-information lookup.
-*/
-
-function configureDirectGateway() {
-    if (!client.ws) {
-        throw new Error(
-            "Discord.js WebSocket manager was not available."
-        );
-    }
-
-    console.log("");
-    console.log("==========================================");
-    console.log("🔧 CONFIGURING @discordjs/ws");
-    console.log("==========================================");
-    console.log("");
-
-    console.log(
-        "discord.js version: 14.27.0"
-    );
-
-    console.log(
-        "Direct Gateway:",
-        DIRECT_GATEWAY_URL
-    );
-
-    console.log("");
-
-    const originalFetchGatewayInformation =
-        client.ws.fetchGatewayInformation;
-
-    if (
-        typeof originalFetchGatewayInformation !==
-        "function"
-    ) {
-        throw new Error(
-            "client.ws.fetchGatewayInformation() is not available."
-        );
-    }
-
-    /*
-        Replace the normal /gateway/bot lookup.
-    */
-
-    client.ws.fetchGatewayInformation =
-        async function directGatewayInformation() {
-
-            console.log("");
-            console.log(
-                "🌐 @discordjs/ws: using DIRECT Gateway information"
-            );
-
-            console.log(
-                "🚫 Skipping Discord /gateway/bot HTTP request"
-            );
-
-            console.log(
-                `🔗 Gateway: ${DIRECT_GATEWAY_URL}`
-            );
-
-            console.log("");
-
-            const gatewayInformation = {
-                url: DIRECT_GATEWAY_URL,
-                shards: 1,
-
-                session_start_limit: {
-                    total: 1000,
-                    remaining: 1000,
-                    reset_after: 0,
-                    max_concurrency: 1
-                }
-            };
-
-            /*
-                discord.js's WebSocket manager exposes its
-                current Gateway URL as .gateway.
-
-                Set it explicitly as an additional safeguard.
-            */
-
-            client.ws.gateway =
-                DIRECT_GATEWAY_URL;
-
-            console.log(
-                "✅ Direct Gateway information supplied."
-            );
-
-            console.log("");
-
-            return gatewayInformation;
-        };
-
-    /*
-        Also set the manager's Gateway property immediately.
-    */
-
-    client.ws.gateway =
-        DIRECT_GATEWAY_URL;
-
-    console.log(
-        "✅ @discordjs/ws workaround installed."
-    );
-
-    console.log(
-        "✅ Discord.js will retain its normal Client functionality."
-    );
-
-    console.log("");
-}
 
 /* =========================================================
    SLASH COMMANDS
 ========================================================= */
 
 const commands = [
+
     new SlashCommandBuilder()
+
         .setName("strike")
+
         .setDescription(
             "Give a user a quality-control strike."
         )
 
         .addUserOption(option =>
             option
+
                 .setName("user")
+
                 .setDescription(
                     "The user receiving the strike."
                 )
+
                 .setRequired(true)
         )
 
         .addStringOption(option =>
             option
+
                 .setName("reason")
+
                 .setDescription(
                     "Reason for the strike."
                 )
+
                 .setRequired(true)
         ),
 
     new SlashCommandBuilder()
+
         .setName("report")
+
         .setDescription(
             "Submit a quality-control report."
         )
 
         .addStringOption(option =>
             option
+
                 .setName("title")
+
                 .setDescription(
                     "Title of the report."
                 )
+
                 .setRequired(true)
         )
 
         .addStringOption(option =>
             option
+
                 .setName("description")
+
                 .setDescription(
                     "Description of the report."
                 )
+
                 .setRequired(true)
         )
-].map(command => command.toJSON());
+
+].map(
+    command => command.toJSON()
+);
 
 /* =========================================================
-   READY EVENT
+   READY
 ========================================================= */
 
-client.once("ready", async () => {
+client.once(
+    "ready",
+    async () => {
 
-    console.log("");
-    console.log("==========================================");
-    console.log(
-        `🤖 Discord READY: ${client.user.tag}`
-    );
-    console.log(
-        `🆔 Bot ID: ${client.user.id}`
-    );
-    console.log(
-        `🏠 Servers: ${client.guilds.cache.size}`
-    );
-    console.log("==========================================");
-    console.log("");
-
-    try {
+        console.log("");
 
         console.log(
-            "🔄 Registering slash commands..."
-        );
-
-        const rest = new REST({
-            version: "10"
-        }).setToken(TOKEN);
-
-        await rest.put(
-            Routes.applicationCommands(CLIENT_ID),
-            {
-                body: commands
-            }
+            "=========================================="
         );
 
         console.log(
-            "✅ Slash commands registered successfully."
+            `🤖 Discord READY: ${client.user.tag}`
         );
 
-    } catch (error) {
-
-        console.error(
-            "❌ Failed to register slash commands:"
+        console.log(
+            `🆔 Bot ID: ${client.user.id}`
         );
 
-        console.error(error);
+        console.log(
+            `🏠 Servers: ${client.guilds.cache.size}`
+        );
+
+        console.log(
+            "=========================================="
+        );
+
+        console.log("");
+
+        try {
+
+            console.log(
+                "🔄 Registering slash commands..."
+            );
+
+            const rest =
+                new REST({
+                    version: "10"
+                })
+                    .setToken(TOKEN);
+
+            await rest.put(
+
+                Routes.applicationCommands(
+                    CLIENT_ID
+                ),
+
+                {
+                    body: commands
+                }
+            );
+
+            console.log(
+                "✅ Slash commands registered successfully."
+            );
+
+        } catch (error) {
+
+            console.error(
+                "❌ Failed to register slash commands:"
+            );
+
+            console.error(error);
+        }
     }
-});
+);
 
 /* =========================================================
    DISCORD EVENTS
 ========================================================= */
 
-client.on("error", error => {
+client.on(
+    "error",
+    error => {
 
-    console.error(
-        "❌ Discord client error:"
-    );
+        console.error(
+            "❌ Discord client error:"
+        );
 
-    console.error(error);
-});
+        console.error(error);
+    }
+);
 
-client.on("warn", warning => {
+client.on(
+    "warn",
+    warning => {
 
-    console.warn(
-        "⚠️ Discord warning:"
-    );
+        console.warn(
+            "⚠️ Discord warning:"
+        );
 
-    console.warn(warning);
-});
+        console.warn(warning);
+    }
+);
 
-client.on("shardReady", shardId => {
+client.on(
+    "debug",
+    message => {
 
-    console.log(
-        `🟢 Discord shard ${shardId} is ready.`
-    );
-});
+        console.log(
+            `🔍 Discord debug: ${message}`
+        );
+    }
+);
 
-client.on("shardError", (error, shardId) => {
+client.on(
+    "shardReady",
+    shardId => {
 
-    console.error(
-        `❌ Discord shard ${shardId} error:`
-    );
+        console.log(
+            `🟢 Discord shard ${shardId} is ready.`
+        );
+    }
+);
 
-    console.error(error);
-});
+client.on(
+    "shardError",
+    (error, shardId) => {
 
-client.on("shardDisconnect", (event, shardId) => {
+        console.error(
+            `❌ Discord shard ${shardId} error:`
+        );
 
-    console.warn(
-        `🔴 Discord shard ${shardId} disconnected.`
-    );
+        console.error(error);
+    }
+);
 
-    console.warn(event);
-});
+client.on(
+    "shardDisconnect",
+    (event, shardId) => {
 
-client.on("shardReconnecting", shardId => {
+        console.warn(
+            `🔴 Discord shard ${shardId} disconnected.`
+        );
 
-    console.log(
-        `🔄 Discord shard ${shardId} reconnecting...`
-    );
-});
+        console.warn(event);
+    }
+);
+
+client.on(
+    "shardReconnecting",
+    shardId => {
+
+        console.log(
+            `🔄 Discord shard ${shardId} reconnecting...`
+        );
+    }
+);
 
 /* =========================================================
    INTERACTION HANDLER
@@ -441,9 +552,9 @@ client.on(
 
         try {
 
-            /* =============================================
+            /* =================================================
                /strike
-            ============================================= */
+            ================================================= */
 
             if (
                 interaction.commandName ===
@@ -461,10 +572,15 @@ client.on(
                     );
 
                 const strike = {
-                    id: Date.now().toString(),
 
-                    userId: user.id,
-                    username: user.tag,
+                    id:
+                        Date.now().toString(),
+
+                    userId:
+                        user.id,
+
+                    username:
+                        user.tag,
 
                     reason,
 
@@ -478,12 +594,15 @@ client.on(
                         new Date().toISOString()
                 };
 
-                db.strikes.push(strike);
+                db.strikes.push(
+                    strike
+                );
 
                 saveDatabase();
 
                 const embed =
                     new EmbedBuilder()
+
                         .setTitle(
                             "⚠️ Quality Control Strike"
                         )
@@ -493,8 +612,10 @@ client.on(
                         )
 
                         .addFields(
+
                             {
                                 name: "User",
+
                                 value:
                                     `${user.tag}\n` +
                                     `\`${user.id}\``,
@@ -504,6 +625,7 @@ client.on(
 
                             {
                                 name: "Moderator",
+
                                 value:
                                     interaction.user.tag,
 
@@ -512,7 +634,9 @@ client.on(
 
                             {
                                 name: "Reason",
-                                value: reason
+
+                                value:
+                                    reason
                             }
                         )
 
@@ -548,9 +672,9 @@ client.on(
                 return;
             }
 
-            /* =============================================
+            /* =================================================
                /report
-            ============================================= */
+            ================================================= */
 
             if (
                 interaction.commandName ===
@@ -567,13 +691,14 @@ client.on(
                         "description"
                     );
 
-                /*
-                    Duplicate report protection.
-                */
-
-                if (isDuplicateReport(title)) {
+                if (
+                    isDuplicateReport(
+                        title
+                    )
+                ) {
 
                     await interaction.reply({
+
                         content:
                             "❌ A report with that title already exists.",
 
@@ -585,9 +710,11 @@ client.on(
 
                 const report = {
 
-                    id: Date.now().toString(),
+                    id:
+                        Date.now().toString(),
 
                     title,
+
                     description,
 
                     reporterId:
@@ -600,25 +727,33 @@ client.on(
                         new Date().toISOString()
                 };
 
-                db.reports.push(report);
+                db.reports.push(
+                    report
+                );
 
                 saveDatabase();
 
                 const embed =
                     new EmbedBuilder()
+
                         .setTitle(
                             "📋 Quality Control Report"
                         )
 
                         .addFields(
+
                             {
                                 name: "Title",
-                                value: title
+
+                                value:
+                                    title
                             },
 
                             {
                                 name: "Description",
-                                value: description
+
+                                value:
+                                    description
                             },
 
                             {
@@ -706,24 +841,19 @@ client.on(
                     "❌ Could not send error response:"
                 );
 
-                console.error(replyError);
+                console.error(
+                    replyError
+                );
             }
         }
     }
 );
 
 /* =========================================================
-   DIRECT GATEWAY NETWORK TEST
+   DIRECT GATEWAY TEST
 ========================================================= */
 
 async function testDirectGateway() {
-
-    /*
-        We don't need to authenticate here.
-
-        This only verifies that Render can establish a
-        WebSocket connection to Discord.
-    */
 
     const WebSocket =
         require("ws");
@@ -732,6 +862,7 @@ async function testDirectGateway() {
         (resolve, reject) => {
 
             console.log("");
+
             console.log(
                 "=========================================="
             );
@@ -748,7 +879,7 @@ async function testDirectGateway() {
 
             const url =
                 `${DIRECT_GATEWAY_URL}` +
-                `/?v=10&encoding=json`;
+                "/?v=10&encoding=json";
 
             console.log(
                 `🌐 ${url}`
@@ -767,25 +898,28 @@ async function testDirectGateway() {
                 );
 
             const timeout =
-                setTimeout(() => {
+                setTimeout(
+                    () => {
 
-                    if (finished) {
-                        return;
-                    }
+                        if (finished) {
+                            return;
+                        }
 
-                    finished = true;
+                        finished = true;
 
-                    try {
-                        ws.terminate();
-                    } catch (_) {}
+                        try {
+                            ws.terminate();
+                        } catch (_) {}
 
-                    reject(
-                        new Error(
-                            "Direct Discord Gateway WebSocket timed out."
-                        )
-                    );
+                        reject(
+                            new Error(
+                                "Direct Discord Gateway WebSocket timed out."
+                            )
+                        );
 
-                }, 15000);
+                    },
+                    15000
+                );
 
             ws.on(
                 "open",
@@ -807,7 +941,9 @@ async function testDirectGateway() {
 
                     finished = true;
 
-                    clearTimeout(timeout);
+                    clearTimeout(
+                        timeout
+                    );
 
                     try {
 
@@ -831,7 +967,7 @@ async function testDirectGateway() {
                         } else {
 
                             console.log(
-                                "⚠️ Received a Gateway packet, but it was not HELLO."
+                                "⚠️ First Gateway packet was not HELLO."
                             );
                         }
 
@@ -841,7 +977,9 @@ async function testDirectGateway() {
                             "⚠️ Gateway response was not valid JSON."
                         );
 
-                        console.error(error);
+                        console.error(
+                            error
+                        );
                     }
 
                     try {
@@ -870,7 +1008,9 @@ async function testDirectGateway() {
 
                     finished = true;
 
-                    clearTimeout(timeout);
+                    clearTimeout(
+                        timeout
+                    );
 
                     reject(error);
                 }
@@ -880,7 +1020,7 @@ async function testDirectGateway() {
 }
 
 /* =========================================================
-   LOGIN
+   START BOT
 ========================================================= */
 
 async function startBot() {
@@ -888,19 +1028,13 @@ async function startBot() {
     try {
 
         /*
-            First prove the Render -> Discord WebSocket path.
+            First verify the raw WebSocket path.
         */
 
         await testDirectGateway();
 
-        /*
-            Now patch the actual @discordjs/ws manager that
-            discord.js 14.27.0 uses internally.
-        */
-
-        configureDirectGateway();
-
         console.log("");
+
         console.log(
             "=========================================="
         );
@@ -916,11 +1050,11 @@ async function startBot() {
         console.log("");
 
         console.log(
-            "discord.js: 14.27.0"
+            "discord.js version: 14.27.0"
         );
 
         console.log(
-            "@discordjs/ws: bundled with discord.js"
+            "@discordjs/ws version: 1.2.3"
         );
 
         console.log(
@@ -933,52 +1067,69 @@ async function startBot() {
 
         console.log("");
 
+        /*
+            Discord.js will now create its internal
+            @discordjs/ws manager.
+
+            Because we patched the prototype above,
+            its fetchGatewayInformation() call will
+            return our direct Gateway information instead
+            of making the blocked /gateway/bot request.
+        */
+
         let loginFinished = false;
 
         const loginTimeout =
-            setTimeout(() => {
+            setTimeout(
+                () => {
 
-                if (loginFinished) {
-                    return;
-                }
+                    if (loginFinished) {
+                        return;
+                    }
 
-                console.error("");
+                    console.error("");
 
-                console.error(
-                    "=========================================="
-                );
+                    console.error(
+                        "=========================================="
+                    );
 
-                console.error(
-                    "❌ DISCORD LOGIN TIMEOUT"
-                );
+                    console.error(
+                        "❌ DISCORD LOGIN TIMEOUT"
+                    );
 
-                console.error(
-                    "=========================================="
-                );
+                    console.error(
+                        "=========================================="
+                    );
 
-                console.error("");
+                    console.error("");
 
-                console.error(
-                    "The direct WebSocket test succeeded,"
-                );
+                    console.error(
+                        "The raw Gateway connection works,"
+                    );
 
-                console.error(
-                    "but discord.js/@discordjs/ws did not"
-                );
+                    console.error(
+                        "but the authenticated discord.js Gateway"
+                    );
 
-                console.error(
-                    "complete the authenticated Gateway login."
-                );
+                    console.error(
+                        "connection did not reach READY."
+                    );
 
-                console.error("");
+                    console.error("");
 
-            }, 30000);
+                },
+                30000
+            );
 
-        await client.login(TOKEN);
+        await client.login(
+            TOKEN
+        );
 
         loginFinished = true;
 
-        clearTimeout(loginTimeout);
+        clearTimeout(
+            loginTimeout
+        );
 
         console.log("");
 
@@ -1014,14 +1165,11 @@ async function startBot() {
 
         console.error("");
 
-        console.error(error);
+        console.error(
+            error
+        );
 
         console.error("");
-
-        /*
-            Keep the Express server alive so Render still
-            considers the Web Service healthy.
-        */
     }
 }
 
@@ -1037,7 +1185,9 @@ process.on(
             "❌ Unhandled promise rejection:"
         );
 
-        console.error(error);
+        console.error(
+            error
+        );
     }
 );
 
@@ -1049,7 +1199,9 @@ process.on(
             "❌ Uncaught exception:"
         );
 
-        console.error(error);
+        console.error(
+            error
+        );
     }
 );
 
