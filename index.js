@@ -20,6 +20,12 @@ const PORT = process.env.PORT || 10000;
 const GATEWAY = "wss://gateway.discord.gg";
 const DB_FILE = "./db.json";
 
+const INFRACTION_COLOR = 0x9B1C31;
+
+/* =========================================================
+   STARTUP
+========================================================= */
+
 if (!TOKEN) {
     console.error("❌ TOKEN environment variable is missing.");
     process.exit(1);
@@ -40,6 +46,7 @@ if (
 WebSocketManager.prototype.fetchGatewayInformation =
     async function () {
         console.log("🌐 Using direct Discord Gateway.");
+
         return {
             url: GATEWAY,
             shards: 1,
@@ -57,8 +64,7 @@ WebSocketManager.prototype.fetchGatewayInformation =
 ========================================================= */
 
 let db = {
-    strikes: [],
-    reports: []
+    strikes: []
 };
 
 function loadDB() {
@@ -71,18 +77,19 @@ function loadDB() {
             db = {
                 strikes: Array.isArray(data.strikes)
                     ? data.strikes
-                    : [],
-                reports: Array.isArray(data.reports)
-                    ? data.reports
                     : []
             };
         }
 
         console.log(
-            `📁 Database loaded: ${db.strikes.length} strikes, ${db.reports.length} reports`
+            `📁 Database loaded: ${db.strikes.length} infractions`
         );
+
     } catch (error) {
-        console.error("❌ Failed to load database:", error);
+        console.error(
+            "❌ Failed to load database:",
+            error
+        );
     }
 }
 
@@ -93,18 +100,11 @@ function saveDB() {
             JSON.stringify(db, null, 2)
         );
     } catch (error) {
-        console.error("❌ Failed to save database:", error);
+        console.error(
+            "❌ Failed to save database:",
+            error
+        );
     }
-}
-
-function duplicateReport(title) {
-    const normalized = title.trim().toLowerCase();
-
-    return db.reports.some(
-        report =>
-            typeof report.title === "string" &&
-            report.title.trim().toLowerCase() === normalized
-    );
 }
 
 loadDB();
@@ -115,7 +115,9 @@ loadDB();
 
 const client = new Client({
     intents: [GatewayIntentBits.Guilds],
-    ws: { version: "10" }
+    ws: {
+        version: "10"
+    }
 });
 
 /* =========================================================
@@ -174,28 +176,6 @@ const commands = [
                     "Reason for the strike."
                 )
                 .setRequired(true)
-        ),
-
-    new SlashCommandBuilder()
-        .setName("report")
-        .setDescription(
-            "Submit a quality-control report."
-        )
-        .addStringOption(option =>
-            option
-                .setName("title")
-                .setDescription(
-                    "Title of the report."
-                )
-                .setRequired(true)
-        )
-        .addStringOption(option =>
-            option
-                .setName("description")
-                .setDescription(
-                    "Description of the report."
-                )
-                .setRequired(true)
         )
 ].map(command => command.toJSON());
 
@@ -205,13 +185,21 @@ const commands = [
 
 client.once("ready", async () => {
     console.log("");
-    console.log("==========================================");
-    console.log(`🤖 Discord READY: ${client.user.tag}`);
-    console.log(`🆔 Bot ID: ${client.user.id}`);
+    console.log(
+        "=========================================="
+    );
+    console.log(
+        `🤖 Discord READY: ${client.user.tag}`
+    );
+    console.log(
+        `🆔 Bot ID: ${client.user.id}`
+    );
     console.log(
         `🏠 Servers: ${client.guilds.cache.size}`
     );
-    console.log("==========================================");
+    console.log(
+        "=========================================="
+    );
     console.log("");
 
     try {
@@ -221,16 +209,21 @@ client.once("ready", async () => {
             retries: 1
         }).setToken(TOKEN);
 
-        console.log("🔄 Registering slash commands...");
+        console.log(
+            "🔄 Registering slash commands..."
+        );
 
         await rest.put(
             Routes.applicationCommands(CLIENT_ID),
-            { body: commands }
+            {
+                body: commands
+            }
         );
 
         console.log(
             "✅ Slash commands registered successfully."
         );
+
     } catch (error) {
         console.error(
             "❌ Failed to register slash commands:",
@@ -273,37 +266,40 @@ client.on("shardReconnecting", shardId =>
 );
 
 /* =========================================================
-   INTERACTIONS
+   /STRIKE
 ========================================================= */
 
-client.on("interactionCreate", async interaction => {
-    if (!interaction.isChatInputCommand()) return;
+client.on(
+    "interactionCreate",
+    async interaction => {
 
-    console.log(
-        `📥 /${interaction.commandName} from ${interaction.user.tag}`
-    );
+        if (!interaction.isChatInputCommand()) {
+            return;
+        }
 
-    /*
-        Acknowledge immediately so Discord knows
-        the bot received the command.
-    */
-
-    try {
-        await interaction.deferReply();
-    } catch (error) {
-        console.error(
-            "❌ Interaction acknowledgment failed:",
-            error
+        console.log(
+            `📥 /${interaction.commandName} from ${interaction.user.tag}`
         );
-        return;
-    }
 
-    try {
-        /* =========================
-           /strike
-        ========================= */
+        try {
+            await interaction.deferReply();
+        } catch (error) {
+            console.error(
+                "❌ Interaction acknowledgment failed:",
+                error
+            );
+            return;
+        }
 
-        if (interaction.commandName === "strike") {
+        try {
+
+            if (interaction.commandName !== "strike") {
+                await interaction.editReply({
+                    content: "❌ Unknown command."
+                });
+                return;
+            }
+
             const user =
                 interaction.options.getUser("user");
 
@@ -318,6 +314,8 @@ client.on("interactionCreate", async interaction => {
                 return;
             }
 
+            /* Save infraction */
+
             const strike = {
                 id: Date.now().toString(),
                 userId: user.id,
@@ -331,39 +329,81 @@ client.on("interactionCreate", async interaction => {
             db.strikes.push(strike);
             saveDB();
 
+            /* Count total infractions */
+
+            const infractionCount =
+                db.strikes.filter(
+                    entry =>
+                        entry.userId === user.id
+                ).length;
+
             const safeReason =
                 reason.length > 1024
                     ? reason.substring(0, 1021) + "..."
                     : reason;
 
-            /* ORIGINAL STRIKE EMBED */
+            /* =================================================
+               DM USER
+            ================================================= */
+
+            let dmStatus =
+                "Details sent to user DMs.";
+
+            try {
+
+                const dmEmbed =
+                    new EmbedBuilder()
+                        .setTitle(
+                            "You received an Infraction."
+                        )
+                        .setDescription(
+                            `Reason: ${safeReason}\n` +
+                            `Infractions: ${infractionCount}`
+                        )
+                        .setColor(
+                            INFRACTION_COLOR
+                        );
+
+                await user.send({
+                    embeds: [dmEmbed]
+                });
+
+                console.log(
+                    `📨 Infraction DM sent to ${user.tag}`
+                );
+
+            } catch (dmError) {
+
+                const dmReason =
+                    dmError?.message ||
+                    "User DMs are disabled.";
+
+                dmStatus =
+                    `Unable to DM user: ${dmReason}`;
+
+                console.error(
+                    `❌ Could not DM ${user.tag}:`,
+                    dmError
+                );
+            }
+
+            /* =================================================
+               PUBLIC EMBED
+            ================================================= */
 
             const embed =
                 new EmbedBuilder()
                     .setTitle(
-                        "⚠️ Quality Control Strike"
+                        "Tester Infraction Issued."
                     )
                     .setDescription(
-                        `A strike has been issued to ${user}.`
+                        `Infracted User: ${user}\n` +
+                        `Reason: ${safeReason}\n` +
+                        `Infraction Count: ${infractionCount}\n` +
+                        `-# ${dmStatus}`
                     )
-                    .addFields(
-                        {
-                            name: "User",
-                            value:
-                                `${user.tag}\n` +
-                                `\`${user.id}\``,
-                            inline: true
-                        },
-                        {
-                            name: "Moderator",
-                            value:
-                                interaction.user.tag,
-                            inline: true
-                        },
-                        {
-                            name: "Reason",
-                            value: safeReason
-                        }
+                    .setColor(
+                        INFRACTION_COLOR
                     )
                     .setTimestamp();
 
@@ -372,126 +412,35 @@ client.on("interactionCreate", async interaction => {
             });
 
             console.log(
-                `✅ /strike completed for ${user.tag}`
+                `✅ /strike completed for ${user.tag} (${infractionCount} total infractions)`
             );
 
-            await sendLog(embed, "Strike");
-            return;
-        }
+            await sendLog(embed);
 
-        /* =========================
-           /report
-        ========================= */
+        } catch (error) {
 
-        if (interaction.commandName === "report") {
-            const title =
-                interaction.options.getString("title");
-
-            const description =
-                interaction.options.getString("description");
-
-            if (!title || !description) {
-                await interaction.editReply({
-                    content:
-                        "❌ Missing required report information."
-                });
-                return;
-            }
-
-            if (duplicateReport(title)) {
-                await interaction.editReply({
-                    content:
-                        "❌ A report with that title already exists."
-                });
-                return;
-            }
-
-            const report = {
-                id: Date.now().toString(),
-                title,
-                description,
-                reporterId: interaction.user.id,
-                reporterTag: interaction.user.tag,
-                createdAt: new Date().toISOString()
-            };
-
-            db.reports.push(report);
-            saveDB();
-
-            const safeTitle =
-                title.length > 256
-                    ? title.substring(0, 253) + "..."
-                    : title;
-
-            const safeDescription =
-                description.length > 1024
-                    ? description.substring(0, 1021) + "..."
-                    : description;
-
-            /* ORIGINAL REPORT EMBED */
-
-            const embed =
-                new EmbedBuilder()
-                    .setTitle(
-                        "📋 Quality Control Report"
-                    )
-                    .addFields(
-                        {
-                            name: "Title",
-                            value: safeTitle
-                        },
-                        {
-                            name: "Description",
-                            value: safeDescription
-                        },
-                        {
-                            name: "Submitted By",
-                            value:
-                                `${interaction.user.tag}\n` +
-                                `\`${interaction.user.id}\``
-                        }
-                    )
-                    .setTimestamp();
-
-            await interaction.editReply({
-                content:
-                    "✅ Report submitted successfully.",
-                embeds: [embed]
-            });
-
-            console.log(
-                `✅ /report completed: ${title}`
+            console.error(
+                `❌ Error handling /${interaction.commandName}:`,
+                error
             );
 
-            await sendLog(embed, "Report");
-            return;
+            try {
+                await interaction.editReply({
+                    content:
+                        "❌ Something went wrong while processing that command."
+                });
+            } catch {}
         }
-
-        await interaction.editReply({
-            content: "❌ Unknown command."
-        });
-
-    } catch (error) {
-        console.error(
-            `❌ Error handling /${interaction.commandName}:`,
-            error
-        );
-
-        try {
-            await interaction.editReply({
-                content:
-                    "❌ Something went wrong while processing that command."
-            });
-        } catch {}
     }
-});
+);
 
 /* =========================================================
    LOG CHANNEL
 ========================================================= */
 
-async function sendLog(embed, type) {
+async function sendLog(embed) {
     try {
+
         const channel =
             await client.channels.fetch(
                 LOG_CHANNEL_ID
@@ -506,12 +455,14 @@ async function sendLog(embed, type) {
             });
 
             console.log(
-                `📋 ${type} log sent successfully.`
+                "📋 Infraction log sent successfully."
             );
         }
+
     } catch (error) {
+
         console.error(
-            `❌ Could not send ${type.toLowerCase()} log:`,
+            "❌ Could not send infraction log:",
             error
         );
     }
@@ -524,7 +475,10 @@ async function sendLog(embed, type) {
 let shuttingDown = false;
 
 async function shutdown(signal) {
-    if (shuttingDown) return;
+
+    if (shuttingDown) {
+        return;
+    }
 
     shuttingDown = true;
 
@@ -569,7 +523,9 @@ process.once(
    START
 ========================================================= */
 
-console.log("🚀 CL - Quality Control starting...");
+console.log(
+    "🚀 CL - Quality Control starting..."
+);
 
 client.login(TOKEN).catch(error => {
     console.error(
