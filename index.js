@@ -565,11 +565,39 @@ client.on(
                 the bot is doing database/file work.
             */
 
-            await interaction.deferReply();
+            console.log("📡 Attempting to acknowledge interaction...");
+
+        try {
+            await Promise.race([
+                interaction.deferReply(),
+
+                new Promise((_, reject) =>
+                    setTimeout(
+                        () =>
+                            reject(
+                                new Error(
+                                    "deferReply() timed out after 10 seconds."
+                                )
+                            ),
+                        10000
+                    )
+                )
+            ]);
 
             console.log(
                 `✅ Interaction acknowledged: /${interaction.commandName}`
             );
+
+        } catch (error) {
+
+            console.error(
+                "❌ deferReply() FAILED:"
+            );
+
+            console.error(error);
+
+            return;
+        }
 
             /* =================================================
                /strike
