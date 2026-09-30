@@ -23,62 +23,34 @@ const LOG_CHANNEL_ID = "1536043209157779587";
 
 const PORT = process.env.PORT || 10000;
 
-const DIRECT_GATEWAY_URL = "wss://gateway.discord.gg";
+const DIRECT_GATEWAY_URL =
+    "wss://gateway.discord.gg";
 
 /* =========================================================
    STARTUP CHECK
 ========================================================= */
 
 if (!TOKEN) {
-    console.error("❌ TOKEN environment variable is missing.");
+
+    console.error(
+        "❌ TOKEN environment variable is missing."
+    );
+
     process.exit(1);
 }
 
 /* =========================================================
-   DIRECT @discordjs/ws WORKAROUND
+   @discordjs/ws GATEWAY WORKAROUND
 ========================================================= */
-
-/*
-    IMPORTANT:
-
-    discord.js 14.27.0 creates its own wrapper WebSocketManager.
-
-    Internally, that wrapper creates an @discordjs/ws
-    WebSocketManager and then calls:
-
-        this._ws.fetchGatewayInformation()
-
-    Render previously received a Cloudflare 429 response when
-    discord.js tried to obtain /gateway/bot.
-
-    We already confirmed that Render CAN connect directly to:
-
-        wss://gateway.discord.gg/?v=10&encoding=json
-
-    Therefore we patch the actual @discordjs/ws manager
-    BEFORE discord.js creates it.
-
-    This means:
-
-        discord.js Client
-              ↓
-        discord.js WebSocketManager
-              ↓
-        @discordjs/ws WebSocketManager
-              ↓
-        OUR patched fetchGatewayInformation()
-              ↓
-        wss://gateway.discord.gg
-
-    The normal discord.js Client remains intact.
-*/
 
 const originalFetchGatewayInformation =
     DiscordWSManager.prototype.fetchGatewayInformation;
 
 if (
-    typeof originalFetchGatewayInformation !== "function"
+    typeof originalFetchGatewayInformation !==
+    "function"
 ) {
+
     console.error(
         "❌ @discordjs/ws fetchGatewayInformation() was not found."
     );
@@ -97,15 +69,12 @@ DiscordWSManager.prototype.fetchGatewayInformation =
         console.log(
             "=========================================="
         );
-
         console.log(
             "🌐 @discordjs/ws DIRECT GATEWAY WORKAROUND"
         );
-
         console.log(
             "=========================================="
         );
-
         console.log("");
 
         console.log(
@@ -119,24 +88,26 @@ DiscordWSManager.prototype.fetchGatewayInformation =
         console.log("");
 
         const gatewayInformation = {
-            url: DIRECT_GATEWAY_URL,
 
-            /*
-                This bot is using one shard.
-            */
-            shards: 1,
+            url:
+                DIRECT_GATEWAY_URL,
 
-            /*
-                Values required by @discordjs/ws.
+            shards:
+                1,
 
-                Since we are bypassing the Gateway Bot HTTP
-                endpoint, these are supplied locally.
-            */
             session_start_limit: {
-                total: 1000,
-                remaining: 1000,
-                reset_after: 0,
-                max_concurrency: 1
+
+                total:
+                    1000,
+
+                remaining:
+                    1000,
+
+                reset_after:
+                    0,
+
+                max_concurrency:
+                    1
             }
         };
 
@@ -159,43 +130,67 @@ console.log(
 
 const app = express();
 
-app.get("/", (req, res) => {
-    res.status(200).send(
-        "CL - Quality Control is running."
-    );
-});
+app.get(
+    "/",
+    (req, res) => {
 
-app.get("/health", (req, res) => {
-    res.status(200).json({
-        status: "online",
-        discord: client.isReady()
-            ? "connected"
-            : "connecting"
-    });
-});
+        res.status(200).send(
+            "CL - Quality Control is running."
+        );
+    }
+);
 
-app.listen(PORT, "0.0.0.0", () => {
-    console.log(
-        `🌐 Web server running on port ${PORT}`
-    );
-});
+app.get(
+    "/health",
+    (req, res) => {
+
+        res.status(200).json({
+
+            status:
+                "online",
+
+            discord:
+                client.isReady()
+                    ? "connected"
+                    : "connecting"
+        });
+    }
+);
+
+app.listen(
+    PORT,
+    "0.0.0.0",
+    () => {
+
+        console.log(
+            `🌐 Web server running on port ${PORT}`
+        );
+    }
+);
 
 /* =========================================================
    DATABASE
 ========================================================= */
 
-const DB_FILE = "./db.json";
+const DB_FILE =
+    "./db.json";
 
 let db = {
-    strikes: [],
-    reports: []
+
+    strikes:
+        [],
+
+    reports:
+        []
 };
 
 function loadDatabase() {
 
     try {
 
-        if (fs.existsSync(DB_FILE)) {
+        if (
+            fs.existsSync(DB_FILE)
+        ) {
 
             const raw =
                 fs.readFileSync(
@@ -203,7 +198,9 @@ function loadDatabase() {
                     "utf8"
                 );
 
-            if (raw.trim()) {
+            if (
+                raw.trim()
+            ) {
 
                 const parsed =
                     JSON.parse(raw);
@@ -211,12 +208,16 @@ function loadDatabase() {
                 db = {
 
                     strikes:
-                        Array.isArray(parsed.strikes)
+                        Array.isArray(
+                            parsed.strikes
+                        )
                             ? parsed.strikes
                             : [],
 
                     reports:
-                        Array.isArray(parsed.reports)
+                        Array.isArray(
+                            parsed.reports
+                        )
                             ? parsed.reports
                             : []
                 };
@@ -236,8 +237,12 @@ function loadDatabase() {
         console.error(error);
 
         db = {
-            strikes: [],
-            reports: []
+
+            strikes:
+                [],
+
+            reports:
+                []
         };
     }
 }
@@ -247,12 +252,15 @@ function saveDatabase() {
     try {
 
         fs.writeFileSync(
+
             DB_FILE,
+
             JSON.stringify(
                 db,
                 null,
                 2
             ),
+
             "utf8"
         );
 
@@ -270,7 +278,9 @@ function saveDatabase() {
     }
 }
 
-function isDuplicateReport(title) {
+function isDuplicateReport(
+    title
+) {
 
     if (!title) {
         return false;
@@ -283,7 +293,8 @@ function isDuplicateReport(title) {
 
     return db.reports.some(
         report =>
-            typeof report.title === "string" &&
+            typeof report.title ===
+                "string" &&
             report.title
                 .trim()
                 .toLowerCase() ===
@@ -297,20 +308,18 @@ loadDatabase();
    DISCORD CLIENT
 ========================================================= */
 
-const client = new Client({
+const client =
+    new Client({
 
-    intents: [
-        GatewayIntentBits.Guilds
-    ],
+        intents: [
+            GatewayIntentBits.Guilds
+        ],
 
-    /*
-        One shard is enough for this bot.
-    */
-
-    ws: {
-        version: "10"
-    }
-});
+        ws: {
+            version:
+                "10"
+        }
+    });
 
 /* =========================================================
    SLASH COMMANDS
@@ -320,70 +329,95 @@ const commands = [
 
     new SlashCommandBuilder()
 
-        .setName("strike")
+        .setName(
+            "strike"
+        )
 
         .setDescription(
             "Give a user a quality-control strike."
         )
 
-        .addUserOption(option =>
-            option
+        .addUserOption(
+            option =>
+                option
 
-                .setName("user")
+                    .setName(
+                        "user"
+                    )
 
-                .setDescription(
-                    "The user receiving the strike."
-                )
+                    .setDescription(
+                        "The user receiving the strike."
+                    )
 
-                .setRequired(true)
+                    .setRequired(
+                        true
+                    )
         )
 
-        .addStringOption(option =>
-            option
+        .addStringOption(
+            option =>
+                option
 
-                .setName("reason")
+                    .setName(
+                        "reason"
+                    )
 
-                .setDescription(
-                    "Reason for the strike."
-                )
+                    .setDescription(
+                        "Reason for the strike."
+                    )
 
-                .setRequired(true)
+                    .setRequired(
+                        true
+                    )
         ),
 
     new SlashCommandBuilder()
 
-        .setName("report")
+        .setName(
+            "report"
+        )
 
         .setDescription(
             "Submit a quality-control report."
         )
 
-        .addStringOption(option =>
-            option
+        .addStringOption(
+            option =>
+                option
 
-                .setName("title")
+                    .setName(
+                        "title"
+                    )
 
-                .setDescription(
-                    "Title of the report."
-                )
+                    .setDescription(
+                        "Title of the report."
+                    )
 
-                .setRequired(true)
+                    .setRequired(
+                        true
+                    )
         )
 
-        .addStringOption(option =>
-            option
+        .addStringOption(
+            option =>
+                option
 
-                .setName("description")
+                    .setName(
+                        "description"
+                    )
 
-                .setDescription(
-                    "Description of the report."
-                )
+                    .setDescription(
+                        "Description of the report."
+                    )
 
-                .setRequired(true)
+                    .setRequired(
+                        true
+                    )
         )
 
 ].map(
-    command => command.toJSON()
+    command =>
+        command.toJSON()
 );
 
 /* =========================================================
@@ -426,9 +460,12 @@ client.once(
 
             const rest =
                 new REST({
-                    version: "10"
+                    version:
+                        "10"
                 })
-                    .setToken(TOKEN);
+                    .setToken(
+                        TOKEN
+                    );
 
             await rest.put(
 
@@ -437,7 +474,8 @@ client.once(
                 ),
 
                 {
-                    body: commands
+                    body:
+                        commands
                 }
             );
 
@@ -546,7 +584,9 @@ client.on(
     "interactionCreate",
     async interaction => {
 
-        if (!interaction.isChatInputCommand()) {
+        if (
+            !interaction.isChatInputCommand()
+        ) {
             return;
         }
 
@@ -554,33 +594,37 @@ client.on(
             `📥 Interaction received: /${interaction.commandName} from ${interaction.user.tag}`
         );
 
+        /*
+            IMPORTANT:
+
+            Test the actual Discord interaction
+            acknowledgment separately.
+
+            If this hangs, the problem is Discord
+            REST connectivity rather than the command.
+        */
+
+        console.log(
+            "📡 Attempting to acknowledge interaction..."
+        );
+
         try {
 
-            /*
-                IMPORTANT:
-
-                Acknowledge the interaction immediately.
-                This prevents Discord from showing
-                "The application did not respond" while
-                the bot is doing database/file work.
-            */
-
-            console.log("📡 Attempting to acknowledge interaction...");
-
-        try {
             await Promise.race([
+
                 interaction.deferReply(),
 
-                new Promise((_, reject) =>
-                    setTimeout(
-                        () =>
-                            reject(
-                                new Error(
-                                    "deferReply() timed out after 10 seconds."
-                                )
-                            ),
-                        10000
-                    )
+                new Promise(
+                    (_, reject) =>
+                        setTimeout(
+                            () =>
+                                reject(
+                                    new Error(
+                                        "deferReply() timed out after 10 seconds."
+                                    )
+                                ),
+                            10000
+                        )
                 )
             ]);
 
@@ -598,6 +642,8 @@ client.on(
 
             return;
         }
+
+        try {
 
             /* =================================================
                /strike
@@ -618,9 +664,13 @@ client.on(
                         "reason"
                     );
 
-                if (!user || !reason) {
+                if (
+                    !user ||
+                    !reason
+                ) {
 
                     await interaction.editReply({
+
                         content:
                             "❌ Missing required strike information."
                     });
@@ -657,14 +707,12 @@ client.on(
 
                 saveDatabase();
 
-                /*
-                    Discord embed fields have length limits.
-                    Keep the reason safely within the limit.
-                */
-
                 const safeReason =
                     reason.length > 1024
-                        ? reason.substring(0, 1021) + "..."
+                        ? reason.substring(
+                            0,
+                            1021
+                        ) + "..."
                         : reason;
 
                 const embed =
@@ -681,26 +729,31 @@ client.on(
                         .addFields(
 
                             {
-                                name: "User",
+                                name:
+                                    "User",
 
                                 value:
                                     `${user.tag}\n` +
                                     `\`${user.id}\``,
 
-                                inline: true
+                                inline:
+                                    true
                             },
 
                             {
-                                name: "Moderator",
+                                name:
+                                    "Moderator",
 
                                 value:
                                     interaction.user.tag,
 
-                                inline: true
+                                inline:
+                                    true
                             },
 
                             {
-                                name: "Reason",
+                                name:
+                                    "Reason",
 
                                 value:
                                     safeReason
@@ -709,23 +762,15 @@ client.on(
 
                         .setTimestamp();
 
-                /*
-                    Edit the deferred response.
-                */
-
                 await interaction.editReply({
-                    embeds: [embed]
+
+                    embeds:
+                        [embed]
                 });
 
                 console.log(
                     `✅ /strike completed for ${user.tag}`
                 );
-
-                /*
-                    Send a copy to the log channel.
-                    This happens AFTER the interaction has
-                    already been acknowledged.
-                */
 
                 try {
 
@@ -736,11 +781,14 @@ client.on(
 
                     if (
                         logChannel &&
-                        typeof logChannel.send === "function"
+                        typeof logChannel.send ===
+                            "function"
                     ) {
 
                         await logChannel.send({
-                            embeds: [embed]
+
+                            embeds:
+                                [embed]
                         });
 
                         console.log(
@@ -779,9 +827,13 @@ client.on(
                         "description"
                     );
 
-                if (!title || !description) {
+                if (
+                    !title ||
+                    !description
+                ) {
 
                     await interaction.editReply({
+
                         content:
                             "❌ Missing required report information."
                     });
@@ -829,18 +881,20 @@ client.on(
 
                 saveDatabase();
 
-                /*
-                    Discord embed fields have length limits.
-                */
-
                 const safeTitle =
                     title.length > 256
-                        ? title.substring(0, 253) + "..."
+                        ? title.substring(
+                            0,
+                            253
+                        ) + "..."
                         : title;
 
                 const safeDescription =
                     description.length > 1024
-                        ? description.substring(0, 1021) + "..."
+                        ? description.substring(
+                            0,
+                            1021
+                        ) + "..."
                         : description;
 
                 const embed =
@@ -853,21 +907,24 @@ client.on(
                         .addFields(
 
                             {
-                                name: "Title",
+                                name:
+                                    "Title",
 
                                 value:
                                     safeTitle
                             },
 
                             {
-                                name: "Description",
+                                name:
+                                    "Description",
 
                                 value:
                                     safeDescription
                             },
 
                             {
-                                name: "Submitted By",
+                                name:
+                                    "Submitted By",
 
                                 value:
                                     `${interaction.user.tag}\n` +
@@ -877,25 +934,18 @@ client.on(
 
                         .setTimestamp();
 
-                /*
-                    Edit the deferred response.
-                */
-
                 await interaction.editReply({
 
                     content:
                         "✅ Report submitted successfully.",
 
-                    embeds: [embed]
+                    embeds:
+                        [embed]
                 });
 
                 console.log(
                     `✅ /report completed: ${title}`
                 );
-
-                /*
-                    Send a copy to the log channel.
-                */
 
                 try {
 
@@ -906,11 +956,14 @@ client.on(
 
                     if (
                         logChannel &&
-                        typeof logChannel.send === "function"
+                        typeof logChannel.send ===
+                            "function"
                     ) {
 
                         await logChannel.send({
-                            embeds: [embed]
+
+                            embeds:
+                                [embed]
                         });
 
                         console.log(
@@ -930,11 +983,8 @@ client.on(
                 return;
             }
 
-            /*
-                Unknown command
-            */
-
             await interaction.editReply({
+
                 content:
                     "❌ Unknown command."
             });
@@ -951,7 +1001,6 @@ client.on(
             console.error(
                 "=========================================="
             );
-            console.error("");
 
             console.error(
                 `Command: /${interaction.commandName}`
@@ -961,17 +1010,9 @@ client.on(
                 `User: ${interaction.user.tag}`
             );
 
-            console.error(
-                error
-            );
+            console.error(error);
 
             console.error("");
-
-            /*
-                If the interaction was already deferred,
-                edit the deferred response instead of trying
-                to send a second initial response.
-            */
 
             try {
 
@@ -994,9 +1035,9 @@ client.on(
                         content:
                             "❌ Something went wrong while processing that command.",
 
-                        ephemeral: true
+                        ephemeral:
+                            true
                     });
-
                 }
 
             } catch (replyError) {
@@ -1051,13 +1092,15 @@ async function testDirectGateway() {
 
             console.log("");
 
-            let finished = false;
+            let finished =
+                false;
 
             const ws =
                 new WebSocket(
                     url,
                     {
-                        handshakeTimeout: 10000
+                        handshakeTimeout:
+                            10000
                     }
                 );
 
@@ -1065,11 +1108,14 @@ async function testDirectGateway() {
                 setTimeout(
                     () => {
 
-                        if (finished) {
+                        if (
+                            finished
+                        ) {
                             return;
                         }
 
-                        finished = true;
+                        finished =
+                            true;
 
                         try {
                             ws.terminate();
@@ -1099,11 +1145,14 @@ async function testDirectGateway() {
                 "message",
                 data => {
 
-                    if (finished) {
+                    if (
+                        finished
+                    ) {
                         return;
                     }
 
-                    finished = true;
+                    finished =
+                        true;
 
                     clearTimeout(
                         timeout
@@ -1166,21 +1215,134 @@ async function testDirectGateway() {
                 "error",
                 error => {
 
-                    if (finished) {
+                    if (
+                        finished
+                    ) {
                         return;
                     }
 
-                    finished = true;
+                    finished =
+                        true;
 
                     clearTimeout(
                         timeout
                     );
 
-                    reject(error);
+                    reject(
+                        error
+                    );
                 }
             );
         }
     );
+}
+
+/* =========================================================
+   DIRECT DISCORD HTTP API TEST
+========================================================= */
+
+async function testDiscordHTTP() {
+
+    console.log("");
+    console.log(
+        "=========================================="
+    );
+    console.log(
+        "🌐 TESTING DISCORD HTTP API"
+    );
+    console.log(
+        "=========================================="
+    );
+    console.log("");
+
+    const controller =
+        new AbortController();
+
+    const timeout =
+        setTimeout(
+            () => {
+
+                controller.abort();
+
+            },
+            10000
+        );
+
+    try {
+
+        console.log(
+            "📡 Requesting Discord /users/@me..."
+        );
+
+        const response =
+            await fetch(
+                "https://discord.com/api/v10/users/@me",
+                {
+
+                    method:
+                        "GET",
+
+                    headers: {
+
+                        Authorization:
+                            `Bot ${TOKEN}`
+                    },
+
+                    signal:
+                        controller.signal
+                }
+            );
+
+        const responseText =
+            await response.text();
+
+        console.log(
+            `📡 Discord HTTP status: ${response.status}`
+        );
+
+        console.log(
+            `📄 Content-Type: ${response.headers.get("content-type")}`
+        );
+
+        console.log(
+            `📄 Response: ${responseText.substring(0, 500)}`
+        );
+
+        console.log("");
+
+        if (
+            response.ok
+        ) {
+
+            console.log(
+                "✅ DISCORD HTTP API IS REACHABLE."
+            );
+
+        } else {
+
+            console.error(
+                "❌ DISCORD HTTP API RETURNED AN ERROR."
+            );
+        }
+
+    } catch (error) {
+
+        console.error(
+            "❌ DISCORD HTTP REQUEST FAILED:"
+        );
+
+        console.error(
+            error
+        );
+
+    } finally {
+
+        clearTimeout(
+            timeout
+        );
+    }
+
+    console.log("");
 }
 
 /* =========================================================
@@ -1192,10 +1354,16 @@ async function startBot() {
     try {
 
         /*
-            First verify the raw WebSocket path.
+            1. Test raw WebSocket.
         */
 
         await testDirectGateway();
+
+        /*
+            2. Test Discord REST API directly.
+        */
+
+        await testDiscordHTTP();
 
         console.log("");
 
@@ -1231,23 +1399,16 @@ async function startBot() {
 
         console.log("");
 
-        /*
-            Discord.js will now create its internal
-            @discordjs/ws manager.
-
-            Because we patched the prototype above,
-            its fetchGatewayInformation() call will
-            return our direct Gateway information instead
-            of making the blocked /gateway/bot request.
-        */
-
-        let loginFinished = false;
+        let loginFinished =
+            false;
 
         const loginTimeout =
             setTimeout(
                 () => {
 
-                    if (loginFinished) {
+                    if (
+                        loginFinished
+                    ) {
                         return;
                     }
 
@@ -1289,7 +1450,8 @@ async function startBot() {
             TOKEN
         );
 
-        loginFinished = true;
+        loginFinished =
+            true;
 
         clearTimeout(
             loginTimeout
