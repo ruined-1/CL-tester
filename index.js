@@ -2,6 +2,7 @@ require("dotenv").config();
 
 const express = require("express");
 const fs = require("fs");
+const WebSocket = require("ws");
 
 const {
     Client,
@@ -16,6 +17,10 @@ const {
     WebSocketManager: DiscordWSManager
 } = require("@discordjs/ws");
 
+/* =========================================================
+   CONFIGURATION
+========================================================= */
+
 const TOKEN = process.env.TOKEN;
 
 const CLIENT_ID = "1536042818664013916";
@@ -25,6 +30,9 @@ const PORT = process.env.PORT || 10000;
 
 const DIRECT_GATEWAY_URL =
     "wss://gateway.discord.gg";
+
+const DISCORD_API_URL =
+    "https://discord.com/api/v10";
 
 /* =========================================================
    STARTUP CHECK
@@ -122,50 +130,6 @@ DiscordWSManager.prototype.fetchGatewayInformation =
 
 console.log(
     "✅ @discordjs/ws Gateway workaround installed."
-);
-
-/* =========================================================
-   EXPRESS WEB SERVER
-========================================================= */
-
-const app = express();
-
-app.get(
-    "/",
-    (req, res) => {
-
-        res.status(200).send(
-            "CL - Quality Control is running."
-        );
-    }
-);
-
-app.get(
-    "/health",
-    (req, res) => {
-
-        res.status(200).json({
-
-            status:
-                "online",
-
-            discord:
-                client.isReady()
-                    ? "connected"
-                    : "connecting"
-        });
-    }
-);
-
-app.listen(
-    PORT,
-    "0.0.0.0",
-    () => {
-
-        console.log(
-            `🌐 Web server running on port ${PORT}`
-        );
-    }
 );
 
 /* =========================================================
@@ -322,6 +286,59 @@ const client =
     });
 
 /* =========================================================
+   EXPRESS WEB SERVER
+========================================================= */
+
+const app =
+    express();
+
+const server =
+    app.listen(
+
+        PORT,
+
+        "0.0.0.0",
+
+        () => {
+
+            console.log(
+                `🌐 Web server running on port ${PORT}`
+            );
+
+        }
+    );
+
+app.get(
+    "/",
+    (req, res) => {
+
+        res.status(200).send(
+            "CL - Quality Control is running."
+        );
+    }
+);
+
+app.get(
+    "/health",
+    (req, res) => {
+
+        res.status(200).json({
+
+            status:
+                "online",
+
+            discord:
+                client.isReady()
+                    ? "connected"
+                    : "connecting",
+
+            uptime:
+                process.uptime()
+        });
+    }
+);
+
+/* =========================================================
    SLASH COMMANDS
 ========================================================= */
 
@@ -460,8 +477,16 @@ client.once(
 
             const rest =
                 new REST({
+
                     version:
-                        "10"
+                        "10",
+
+                    timeout:
+                        10000,
+
+                    retries:
+                        1
+
                 })
                     .setToken(
                         TOKEN
@@ -577,6 +602,50 @@ client.on(
 );
 
 /* =========================================================
+   INTERACTION ACKNOWLEDGMENT
+========================================================= */
+
+async function acknowledgeInteraction(
+    interaction
+) {
+
+    console.log(
+        "📡 Attempting to acknowledge interaction..."
+    );
+
+    try {
+
+        await interaction.deferReply();
+
+        console.log(
+            `✅ Interaction acknowledged: /${interaction.commandName}`
+        );
+
+        return true;
+
+    } catch (error) {
+
+        console.error(
+            "❌ deferReply() FAILED:"
+        );
+
+        console.error(error);
+
+        console.error("");
+
+        console.error(
+            "ℹ️ The interaction reached the bot,"
+        );
+
+        console.error(
+            "but the Discord HTTP interaction request failed."
+        );
+
+        return false;
+    }
+}
+
+/* =========================================================
    INTERACTION HANDLER
 ========================================================= */
 
@@ -590,56 +659,18 @@ client.on(
             return;
         }
 
+        console.log("");
+
         console.log(
             `📥 Interaction received: /${interaction.commandName} from ${interaction.user.tag}`
         );
 
-        /*
-            IMPORTANT:
-
-            Test the actual Discord interaction
-            acknowledgment separately.
-
-            If this hangs, the problem is Discord
-            REST connectivity rather than the command.
-        */
-
-        console.log(
-            "📡 Attempting to acknowledge interaction..."
-        );
-
-        try {
-
-            await Promise.race([
-
-                interaction.deferReply(),
-
-                new Promise(
-                    (_, reject) =>
-                        setTimeout(
-                            () =>
-                                reject(
-                                    new Error(
-                                        "deferReply() timed out after 10 seconds."
-                                    )
-                                ),
-                            10000
-                        )
-                )
-            ]);
-
-            console.log(
-                `✅ Interaction acknowledged: /${interaction.commandName}`
+        const acknowledged =
+            await acknowledgeInteraction(
+                interaction
             );
 
-        } catch (error) {
-
-            console.error(
-                "❌ deferReply() FAILED:"
-            );
-
-            console.error(error);
-
+        if (!acknowledged) {
             return;
         }
 
@@ -983,6 +1014,10 @@ client.on(
                 return;
             }
 
+            /* =================================================
+               UNKNOWN COMMAND
+            ================================================= */
+
             await interaction.editReply({
 
                 content:
@@ -992,12 +1027,15 @@ client.on(
         } catch (error) {
 
             console.error("");
+
             console.error(
                 "=========================================="
             );
+
             console.error(
                 "❌ INTERACTION ERROR"
             );
+
             console.error(
                 "=========================================="
             );
@@ -1059,9 +1097,6 @@ client.on(
 ========================================================= */
 
 async function testDirectGateway() {
-
-    const WebSocket =
-        require("ws");
 
     return new Promise(
         (resolve, reject) => {
@@ -1177,6 +1212,16 @@ async function testDirectGateway() {
                                 "✅ Discord Gateway HELLO received."
                             );
 
+                            if (
+                                packet.d &&
+                                packet.d.heartbeat_interval
+                            ) {
+
+                                console.log(
+                                    `💓 Heartbeat interval: ${packet.d.heartbeat_interval}ms`
+                                );
+                            }
+
                         } else {
 
                             console.log(
@@ -1244,15 +1289,19 @@ async function testDirectGateway() {
 async function testDiscordHTTP() {
 
     console.log("");
+
     console.log(
         "=========================================="
     );
+
     console.log(
         "🌐 TESTING DISCORD HTTP API"
     );
+
     console.log(
         "=========================================="
     );
+
     console.log("");
 
     const controller =
@@ -1276,7 +1325,9 @@ async function testDiscordHTTP() {
 
         const response =
             await fetch(
-                "https://discord.com/api/v10/users/@me",
+
+                `${DISCORD_API_URL}/users/@me`,
+
                 {
 
                     method:
@@ -1323,6 +1374,15 @@ async function testDiscordHTTP() {
             console.error(
                 "❌ DISCORD HTTP API RETURNED AN ERROR."
             );
+
+            if (
+                response.status === 429
+            ) {
+
+                console.error(
+                    "⚠️ Discord/Cloudflare returned HTTP 429."
+                );
+            }
         }
 
     } catch (error) {
@@ -1346,158 +1406,228 @@ async function testDiscordHTTP() {
 }
 
 /* =========================================================
-   START BOT
+   GRACEFUL RENDER INSTANCE SHUTDOWN
 ========================================================= */
 
-async function startBot() {
+let shuttingDown =
+    false;
+
+async function shutdown(
+    signal
+) {
+
+    if (
+        shuttingDown
+    ) {
+        return;
+    }
+
+    shuttingDown =
+        true;
+
+    console.log("");
+
+    console.log(
+        "=========================================="
+    );
+
+    console.log(
+        `🛑 ${signal} RECEIVED`
+    );
+
+    console.log(
+        "🧹 PREVIOUS INSTANCE SHUTDOWN STARTED"
+    );
+
+    console.log(
+        "=========================================="
+    );
+
+    console.log("");
+
+    /*
+        Stop accepting new HTTP requests.
+    */
 
     try {
 
-        /*
-            1. Test raw WebSocket.
-        */
+        if (
+            typeof server.closeIdleConnections ===
+            "function"
+        ) {
 
-        await testDirectGateway();
+            server.closeIdleConnections();
+        }
 
-        /*
-            2. Test Discord REST API directly.
-        */
+        await new Promise(
+            resolve => {
 
-        await testDiscordHTTP();
+                let resolved =
+                    false;
 
-        console.log("");
+                const finish =
+                    () => {
 
-        console.log(
-            "=========================================="
-        );
+                        if (
+                            resolved
+                        ) {
+                            return;
+                        }
 
-        console.log(
-            "🔑 LOGGING INTO DISCORD"
-        );
+                        resolved =
+                            true;
 
-        console.log(
-            "=========================================="
-        );
+                        resolve();
+                    };
 
-        console.log("");
+                server.close(
+                    () => {
 
-        console.log(
-            "discord.js version: 14.27.0"
-        );
+                        console.log(
+                            "🌐 HTTP server closed."
+                        );
 
-        console.log(
-            "@discordjs/ws version: 1.2.3"
-        );
-
-        console.log(
-            "Gateway workaround: ENABLED"
-        );
-
-        console.log(
-            `Gateway: ${DIRECT_GATEWAY_URL}`
-        );
-
-        console.log("");
-
-        let loginFinished =
-            false;
-
-        const loginTimeout =
-            setTimeout(
-                () => {
-
-                    if (
-                        loginFinished
-                    ) {
-                        return;
+                        finish();
                     }
+                );
 
-                    console.error("");
-
-                    console.error(
-                        "=========================================="
-                    );
-
-                    console.error(
-                        "❌ DISCORD LOGIN TIMEOUT"
-                    );
-
-                    console.error(
-                        "=========================================="
-                    );
-
-                    console.error("");
-
-                    console.error(
-                        "The raw Gateway connection works,"
-                    );
-
-                    console.error(
-                        "but the authenticated discord.js Gateway"
-                    );
-
-                    console.error(
-                        "connection did not reach READY."
-                    );
-
-                    console.error("");
-
-                },
-                30000
-            );
-
-        await client.login(
-            TOKEN
+                setTimeout(
+                    finish,
+                    5000
+                );
+            }
         );
-
-        loginFinished =
-            true;
-
-        clearTimeout(
-            loginTimeout
-        );
-
-        console.log("");
-
-        console.log(
-            "=========================================="
-        );
-
-        console.log(
-            "✅ DISCORD LOGIN COMPLETED"
-        );
-
-        console.log(
-            "=========================================="
-        );
-
-        console.log("");
 
     } catch (error) {
 
-        console.error("");
-
         console.error(
-            "=========================================="
+            "⚠️ Error closing HTTP server:"
         );
 
-        console.error(
-            "❌ DISCORD CONNECTION FAILED"
-        );
-
-        console.error(
-            "=========================================="
-        );
-
-        console.error("");
-
-        console.error(
-            error
-        );
-
-        console.error("");
+        console.error(error);
     }
+
+    /*
+        Disconnect Discord cleanly.
+    */
+
+    try {
+
+        if (
+            client.isReady()
+        ) {
+
+            console.log(
+                "🔌 Disconnecting Discord client..."
+            );
+
+            client.destroy();
+
+            console.log(
+                "✅ Discord client disconnected."
+            );
+
+        } else {
+
+            console.log(
+                "ℹ️ Discord client was not ready."
+            );
+        }
+
+    } catch (error) {
+
+        console.error(
+            "⚠️ Error disconnecting Discord:"
+        );
+
+        console.error(error);
+    }
+
+    console.log("");
+
+    console.log(
+        "=========================================="
+    );
+
+    console.log(
+        "✅ PREVIOUS INSTANCE DELETED / SHUTDOWN COMPLETE"
+    );
+
+    console.log(
+        "✅ Old bot process is exiting."
+    );
+
+    console.log(
+        "=========================================="
+    );
+
+    console.log("");
+
+    process.exit(0);
 }
+
+/*
+    Render sends SIGTERM when replacing an old instance.
+*/
+
+process.once(
+    "SIGTERM",
+    () => {
+
+        shutdown(
+            "SIGTERM"
+        );
+    }
+);
+
+/*
+    Also handle local/manual shutdowns.
+*/
+
+process.once(
+    "SIGINT",
+    () => {
+
+        shutdown(
+            "SIGINT"
+        );
+    }
+);
+
+/*
+    Safety fallback.
+
+    Render normally gives the process time to exit
+    after SIGTERM. This prevents the bot from hanging
+    indefinitely during shutdown.
+*/
+
+const forcedShutdownTimer =
+    setTimeout(
+        () => {
+
+            if (
+                shuttingDown
+            ) {
+
+                console.error("");
+
+                console.error(
+                    "⚠️ FORCE SHUTDOWN"
+                );
+
+                console.error(
+                    "Old instance did not finish shutting down in time."
+                );
+
+                process.exit(1);
+            }
+
+        },
+        25000
+    );
+
+forcedShutdownTimer.unref();
 
 /* =========================================================
    PROCESS ERROR HANDLERS
@@ -1534,5 +1664,25 @@ process.on(
 /* =========================================================
    START
 ========================================================= */
+
+console.log("");
+
+console.log(
+    "=========================================="
+);
+
+console.log(
+    "🚀 CL - QUALITY CONTROL STARTING"
+);
+
+console.log(
+    "🆕 NEW RENDER INSTANCE STARTING"
+);
+
+console.log(
+    "=========================================="
+);
+
+console.log("");
 
 startBot();
