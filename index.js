@@ -550,7 +550,26 @@ client.on(
             return;
         }
 
+        console.log(
+            `📥 Interaction received: /${interaction.commandName} from ${interaction.user.tag}`
+        );
+
         try {
+
+            /*
+                IMPORTANT:
+
+                Acknowledge the interaction immediately.
+                This prevents Discord from showing
+                "The application did not respond" while
+                the bot is doing database/file work.
+            */
+
+            await interaction.deferReply();
+
+            console.log(
+                `✅ Interaction acknowledged: /${interaction.commandName}`
+            );
 
             /* =================================================
                /strike
@@ -570,6 +589,16 @@ client.on(
                     interaction.options.getString(
                         "reason"
                     );
+
+                if (!user || !reason) {
+
+                    await interaction.editReply({
+                        content:
+                            "❌ Missing required strike information."
+                    });
+
+                    return;
+                }
 
                 const strike = {
 
@@ -599,6 +628,16 @@ client.on(
                 );
 
                 saveDatabase();
+
+                /*
+                    Discord embed fields have length limits.
+                    Keep the reason safely within the limit.
+                */
+
+                const safeReason =
+                    reason.length > 1024
+                        ? reason.substring(0, 1021) + "..."
+                        : reason;
 
                 const embed =
                     new EmbedBuilder()
@@ -636,15 +675,29 @@ client.on(
                                 name: "Reason",
 
                                 value:
-                                    reason
+                                    safeReason
                             }
                         )
 
                         .setTimestamp();
 
-                await interaction.reply({
+                /*
+                    Edit the deferred response.
+                */
+
+                await interaction.editReply({
                     embeds: [embed]
                 });
+
+                console.log(
+                    `✅ /strike completed for ${user.tag}`
+                );
+
+                /*
+                    Send a copy to the log channel.
+                    This happens AFTER the interaction has
+                    already been acknowledged.
+                */
 
                 try {
 
@@ -653,11 +706,18 @@ client.on(
                             LOG_CHANNEL_ID
                         );
 
-                    if (logChannel) {
+                    if (
+                        logChannel &&
+                        typeof logChannel.send === "function"
+                    ) {
 
                         await logChannel.send({
                             embeds: [embed]
                         });
+
+                        console.log(
+                            "📋 Strike log sent successfully."
+                        );
                     }
 
                 } catch (error) {
@@ -691,18 +751,26 @@ client.on(
                         "description"
                     );
 
+                if (!title || !description) {
+
+                    await interaction.editReply({
+                        content:
+                            "❌ Missing required report information."
+                    });
+
+                    return;
+                }
+
                 if (
                     isDuplicateReport(
                         title
                     )
                 ) {
 
-                    await interaction.reply({
+                    await interaction.editReply({
 
                         content:
-                            "❌ A report with that title already exists.",
-
-                        ephemeral: true
+                            "❌ A report with that title already exists."
                     });
 
                     return;
@@ -733,6 +801,20 @@ client.on(
 
                 saveDatabase();
 
+                /*
+                    Discord embed fields have length limits.
+                */
+
+                const safeTitle =
+                    title.length > 256
+                        ? title.substring(0, 253) + "..."
+                        : title;
+
+                const safeDescription =
+                    description.length > 1024
+                        ? description.substring(0, 1021) + "..."
+                        : description;
+
                 const embed =
                     new EmbedBuilder()
 
@@ -746,14 +828,14 @@ client.on(
                                 name: "Title",
 
                                 value:
-                                    title
+                                    safeTitle
                             },
 
                             {
                                 name: "Description",
 
                                 value:
-                                    description
+                                    safeDescription
                             },
 
                             {
@@ -767,13 +849,25 @@ client.on(
 
                         .setTimestamp();
 
-                await interaction.reply({
+                /*
+                    Edit the deferred response.
+                */
+
+                await interaction.editReply({
 
                     content:
                         "✅ Report submitted successfully.",
 
                     embeds: [embed]
                 });
+
+                console.log(
+                    `✅ /report completed: ${title}`
+                );
+
+                /*
+                    Send a copy to the log channel.
+                */
 
                 try {
 
@@ -782,11 +876,18 @@ client.on(
                             LOG_CHANNEL_ID
                         );
 
-                    if (logChannel) {
+                    if (
+                        logChannel &&
+                        typeof logChannel.send === "function"
+                    ) {
 
                         await logChannel.send({
                             embeds: [embed]
                         });
+
+                        console.log(
+                            "📋 Report log sent successfully."
+                        );
                     }
 
                 } catch (error) {
@@ -801,30 +902,64 @@ client.on(
                 return;
             }
 
+            /*
+                Unknown command
+            */
+
+            await interaction.editReply({
+                content:
+                    "❌ Unknown command."
+            });
+
         } catch (error) {
 
+            console.error("");
             console.error(
-                "❌ Interaction error:"
+                "=========================================="
+            );
+            console.error(
+                "❌ INTERACTION ERROR"
+            );
+            console.error(
+                "=========================================="
+            );
+            console.error("");
+
+            console.error(
+                `Command: /${interaction.commandName}`
             );
 
-            console.error(error);
+            console.error(
+                `User: ${interaction.user.tag}`
+            );
+
+            console.error(
+                error
+            );
+
+            console.error("");
+
+            /*
+                If the interaction was already deferred,
+                edit the deferred response instead of trying
+                to send a second initial response.
+            */
 
             try {
 
                 if (
-                    interaction.replied ||
                     interaction.deferred
                 ) {
 
-                    await interaction.followUp({
+                    await interaction.editReply({
 
                         content:
-                            "❌ Something went wrong while processing that command.",
-
-                        ephemeral: true
+                            "❌ Something went wrong while processing that command."
                     });
 
-                } else {
+                } else if (
+                    !interaction.replied
+                ) {
 
                     await interaction.reply({
 
@@ -833,12 +968,13 @@ client.on(
 
                         ephemeral: true
                     });
+
                 }
 
             } catch (replyError) {
 
                 console.error(
-                    "❌ Could not send error response:"
+                    "❌ Could not send interaction error response:"
                 );
 
                 console.error(
